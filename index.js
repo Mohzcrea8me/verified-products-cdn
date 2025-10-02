@@ -954,6 +954,7 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
 
 if (typeof window !== "undefined") {
   window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
+
   window.getDerivatives = getDerivatives;
 }
 
