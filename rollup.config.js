@@ -5,8 +5,7 @@ export default {
   input: "index.js",
   output: {
     file: "dist/index.js",
-    format: "iife",
-    name: "verifiedProductsCdn",
+    format: "esm",
   },
   plugins: [
     resolve({
@@ -15,7 +14,6 @@ export default {
     }),
     commonjs({
       include: "node_modules/**",
-      // Optionally:
       namedExports: {
         "node_modules/form-data/lib/form_data.js": ["default"],
       },
