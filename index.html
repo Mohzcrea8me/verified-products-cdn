@@ -68,9 +68,6 @@
 
     <div id="products" class="products-grid"></div>
 
-    <h1>Fixed Income And AMC</h1>
-
-    <div id="products-fx" class="products-grid"></div>
 
 
     <script type="module"
@@ -80,7 +77,6 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
-                const products = await getDerivatives(8453);
                 const container = document.getElementById('products');
 
                 for await (const product of getDerivatives(8453)) {
@@ -112,9 +108,6 @@
 
                     container.appendChild(card);
                 }
-
-
-
 
             } catch (err) {
                 console.error("load products error: ", err);
