@@ -68,6 +68,10 @@
 
     <div id="products" class="products-grid"></div>
 
+    <h1>Fixed Income And AMC</h1>
+
+    <div id="products-fx" class="products-grid"></div>
+
 
     <script type="module"
         src="https://cdn.jsdelivr.net/gh/mohzcrea8me/verified-products-cdn@main/dist/index.js"></script>
@@ -79,7 +83,8 @@
                 const products = await getDerivatives(8453);
                 const container = document.getElementById('products');
 
-                products.forEach(product => {
+                for await (const product of getDerivatives(8453)) {
+
                     const card = document.createElement('div');
                     card.className = 'product-card';
 
@@ -106,7 +111,9 @@
                     card.appendChild(info);
 
                     container.appendChild(card);
-                });
+                }
+
+
 
 
             } catch (err) {

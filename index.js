@@ -643,14 +643,9 @@ const maybeDelay = async (shouldDelay, delayTime) => {
     await new Promise((res) => setTimeout(res, Number(delayTime)));
 };
 
-const getDerivatives = async (
-  chainId,
-  shouldDelay = false,
-  delayTime = 1000
-) => {
+async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
   try {
     const allPoolsRaw = await fetchMarginPools(chainId);
-    const formattedPools = [];
     const securityDetailMap = new Map();
 
     await Promise.all(
@@ -749,7 +744,7 @@ const getDerivatives = async (
           ).values()
         ).reverse();
 
-        formattedPools.push({
+        const formattedPool = {
           id: pool.id,
           type: pool.poolType,
           priceChartData: priceChartData.length ? priceChartData : null,
@@ -774,33 +769,31 @@ const getDerivatives = async (
                   buyStats.totalAmount + sellStats.totalAmount
                 )
               : "0",
-        });
+        };
+
+        // Yield the formatted pool immediately
+        yield formattedPool;
 
         await maybeDelay(shouldDelay, delayTime);
       } catch (err) {
         console.warn(`Error processing pool ${pool.id}:`, err?.message);
       }
     }
-
-    return formattedPools;
   } catch (err) {
     console.error("getDerivatives failed:", err?.message);
-    return [];
   }
-};
+}
 
-const getAMCAndFixedIncomeProducts = async (
+async function* getAMCAndFixedIncomeProducts(
   chainId,
   shouldDelay = false,
   delayTime = 1000
-) => {
+) {
   try {
     const allPoolsRaw = await fetchCustomPools(
       chainId,
       JSON.stringify([PoolType.primaryPool, PoolType.secondaryPool])
     );
-
-    const formattedPools = [];
 
     for (const pool of allPoolsRaw) {
       try {
@@ -919,7 +912,7 @@ const getAMCAndFixedIncomeProducts = async (
               ).reverse()
             : null;
 
-        formattedPools.push({
+        const formattedPool = {
           id: pool.id,
           type: pool.poolType,
           priceChartData: chartData,
@@ -942,7 +935,10 @@ const getAMCAndFixedIncomeProducts = async (
             totalBought + totalSold > 0
               ? formatNumberWithUnits(totalBought + totalSold)
               : "0",
-        });
+        };
+
+        // Yield the formatted pool as soon as it is ready
+        yield formattedPool;
 
         await maybeDelay(shouldDelay, delayTime);
       } catch (poolError) {
@@ -951,13 +947,10 @@ const getAMCAndFixedIncomeProducts = async (
         );
       }
     }
-
-    return formattedPools;
   } catch (err) {
     console.error("getAMCAndFixedIncomeProducts failed:", err?.message);
-    return [];
   }
-};
+}
 
 window.getDerivatives = getDerivatives;
 window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
