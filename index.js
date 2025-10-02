@@ -945,8 +945,8 @@ async function* getAMCAndFixedIncomeProducts(
 }
 
 if (typeof window !== "undefined") {
-  window.getDerivatives = getDerivatives;
   window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
+  window.getDerivatives = getDerivatives;
 }
 
-export { getDerivatives, getAMCAndFixedIncomeProducts };
+export { getAMCAndFixedIncomeProducts, getDerivatives };

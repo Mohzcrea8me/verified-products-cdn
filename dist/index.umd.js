@@ -46053,8 +46053,8 @@
   }
 
   if (typeof window !== "undefined") {
-    window.getDerivatives = getDerivatives;
     window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
+    window.getDerivatives = getDerivatives;
   }
 
   exports.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;

@@ -64,11 +64,11 @@
 
 <body>
 
-    <h1>Derivatives</h1>
+    <h1>Derivatives (Base Mainnet: 8453)</h1>
 
     <div id="products" class="products-grid"></div>
 
-    <h1>Fixed Income And Amc</h1>
+    <h1>Fixed Income And Amc(Sepolia Testnet: 11155111)</h1>
 
     <div id="products-fx" class="products-grid"></div>
 
@@ -76,7 +76,7 @@
     <script>
         (async () => {
 
-
+            console.log(getAMCAndFixedIncomeProducts, getDerivatives)
             window.addEventListener('DOMContentLoaded', async () => {
                 try {
                     const container = document.getElementById('products');
