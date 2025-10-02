@@ -114,6 +114,7 @@
 
                     const containerFx = document.getElementById('products-fx');
                     const productsFx = getAMCAndFixedIncomeProducts(11155111);
+
                     for await (const product of productsFx) {
                         const card = document.createElement('div');
                         card.className = 'product-card';
