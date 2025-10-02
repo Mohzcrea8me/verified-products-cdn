@@ -46055,3 +46055,5 @@ async function* getAMCAndFixedIncomeProducts(
 
 window.getDerivatives = getDerivatives;
 window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
+
+export { getAMCAndFixedIncomeProducts, getDerivatives };
