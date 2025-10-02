@@ -3,10 +3,13 @@ import commonjs from "@rollup/plugin-commonjs";
 
 export default {
   input: "index.js",
-  output: {
-    file: "dist/index.js",
-    format: "esm",
-  },
+  output: [
+    {
+      file: "dist/index.umd.js",
+      format: "umd",
+      name: "VerifiedProducts",
+    },
+  ],
   plugins: [
     resolve({
       browser: true,

@@ -648,28 +648,23 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
     const allPoolsRaw = await fetchMarginPools(chainId);
     const securityDetailMap = new Map();
 
-    await Promise.all(
-      allPoolsRaw.map(async (pool) => {
-        if (!securityDetailMap.has(pool.security)) {
-          const details = await fetchSecurityByAddress(chainId, pool.security);
-          if (details?.length && details[0].subscriptionsClosed?.length === 0) {
-            securityDetailMap.set(pool.security, details);
-          }
-        }
-      })
-    );
-
     for (const pool of allPoolsRaw) {
       if (pool.poolType !== PoolType.marginPool) continue;
 
       try {
-        const fetchedSecurityDetails = securityDetailMap.get(pool.security);
-        if (!fetchedSecurityDetails?.length) continue;
+        // Lazy-load security details
+        let fetchedSecurityDetails = securityDetailMap.get(pool.security);
+        if (!fetchedSecurityDetails) {
+          const details = await fetchSecurityByAddress(chainId, pool.security);
+          if (!details?.length || details[0].subscriptionsClosed?.length > 0)
+            continue;
+          securityDetailMap.set(pool.security, details);
+          fetchedSecurityDetails = details;
+        }
 
         const securityCategory = ethers.utils.parseBytes32String(
           fetchedSecurityDetails[0].productCategory
         );
-
         if (!securityCategory) continue;
 
         const securityDetails = pool.tokens.find(
@@ -678,6 +673,7 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
         const currencyDetails = pool.tokens.find(
           (t) => t.address === pool.currency
         );
+        if (!securityDetails || !currencyDetails) continue;
 
         const buyOrders = pool.marginOrders.filter(
           (ord) => ord.tokenIn.address === pool.currency
@@ -701,8 +697,8 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
           ? currenciesToFiat[
               currencyDetails?.symbol
                 ?.toLowerCase()
-                ?.replace("vc", "")
-                ?.toUpperCase()
+                .replace("vc", "")
+                .toUpperCase()
             ]
           : currenciesToFiat[
               currencyDetails?.symbol?.toLowerCase()?.toUpperCase()
@@ -710,23 +706,18 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
 
         const web3 = new Web3(chainDetails[0]?.rpcUrl);
 
+        const cficodeDecoded = ethers.utils.parseBytes32String(
+          pool.cficode || ""
+        );
+        const cficodeSymbol = cficodeDecoded.toLowerCase().startsWith("0x")
+          ? web3.utils.toAscii(cficodeDecoded)
+          : cficodeDecoded;
+
         const currentPrice = pool.cficode
           ? await fetchTokenPriceFromVerified(
-              pool.cficode &&
-                ethers.utils
-                  .parseBytes32String(pool.cficode)
-                  ?.toLowerCase()
-                  ?.startsWith("0x") &&
-                web3
-                ? web3.utils.toAscii(
-                    ethers.utils.parseBytes32String(pool.cficode)
-                  )
-                : pool.cficode
-                ? ethers.utils.parseBytes32String(pool.cficode)
-                : "",
-              tokenGcexAlias[securityDetails?.symbol?.toUpperCase()]
-                ? tokenGcexAlias[securityDetails?.symbol?.toUpperCase()]
-                : securityDetails?.symbol,
+              cficodeSymbol,
+              tokenGcexAlias[securityDetails?.symbol?.toUpperCase()] ||
+                securityDetails?.symbol,
               currencyFiat,
               "BUY"
             )
@@ -771,9 +762,7 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
               : "0",
         };
 
-        // Yield the formatted pool immediately
         yield formattedPool;
-
         await maybeDelay(shouldDelay, delayTime);
       } catch (err) {
         console.warn(`Error processing pool ${pool.id}:`, err?.message);
@@ -952,7 +941,8 @@ async function* getAMCAndFixedIncomeProducts(
   }
 }
 
-window.getDerivatives = getDerivatives;
-window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
+if (typeof window !== "undefined") {
+  window.getDerivatives = getDerivatives;
+}
 
-export { getDerivatives, getAMCAndFixedIncomeProducts };
+export { getDerivatives };
