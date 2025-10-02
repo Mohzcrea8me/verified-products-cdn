@@ -16437,7 +16437,7 @@
           return char - (charCodeMap.a - 10);
       return undefined;
   }
-  function hexToUint8Array(hex) {
+  function hexToUint8Array$1(hex) {
       let offset = 0;
       if (hex.startsWith('0') && (hex[1] === 'x' || hex[1] === 'X')) {
           offset = 2;
@@ -16477,7 +16477,7 @@
     ethAbiToJsonSchema: ethAbiToJsonSchema,
     fetchArrayElement: fetchArrayElement,
     hexToNumber: hexToNumber$2,
-    hexToUint8Array: hexToUint8Array,
+    hexToUint8Array: hexToUint8Array$1,
     numberToHex: numberToHex$1,
     padLeft: padLeft$1,
     parseBaseType: parseBaseType$1,
@@ -16524,7 +16524,7 @@
               // odd length hex
               return false;
           }
-          valueToCheck = hexToUint8Array(value);
+          valueToCheck = hexToUint8Array$1(value);
       }
       else if (Array.isArray(value)) {
           if (value.some(d => d < 0 || d > 255 || !Number.isInteger(d))) {
@@ -16788,7 +16788,7 @@
       if (!isBloom$1(bloom)) {
           return false;
       }
-      const uint8Array = typeof value === 'string' ? hexToUint8Array(value) : value;
+      const uint8Array = typeof value === 'string' ? hexToUint8Array$1(value) : value;
       const hash = uint8ArrayToHexString$1(keccak256(uint8Array)).slice(2);
       for (let i = 0; i < 12; i += 4) {
           // calculate bit position in bloom filter that must be active
@@ -17349,7 +17349,7 @@
           return new Uint8Array(data);
       }
       if (typeof data === 'string') {
-          return hexToUint8Array(data);
+          return hexToUint8Array$1(data);
       }
       throw new InvalidBytesError(data);
   };
@@ -35448,7 +35448,7 @@
           });
       }
       // for better performance, we could convert hex to destination bytes directly (encoded var)
-      const addressBytes = hexToUint8Array(address);
+      const addressBytes = hexToUint8Array$1(address);
       // expand address to WORD_SIZE
       const encoded = alloc(WORD_SIZE);
       encoded.set(addressBytes, ADDRESS_OFFSET);
@@ -35540,7 +35540,7 @@
           hexValue = value.toString(16);
       }
       hexValue = padLeft(hexValue, byteLength * 2);
-      return hexToUint8Array(hexValue);
+      return hexToUint8Array$1(hexValue);
   }
   function uint8ArrayToBigInt(value, max) {
       const hexValue = uint8ArrayToHexString$1(value);
@@ -36126,7 +36126,7 @@
   */
   function decodeParameters$1(abis, bytes, _loose) {
       const abiParams = toAbiParams(abis);
-      const bytesArray = hexToUint8Array(bytes);
+      const bytesArray = hexToUint8Array$1(bytes);
       return decodeTuple({ components: abiParams }, bytesArray).result;
   }
 
@@ -45536,9 +45536,17 @@
     }
   };
 
+  const hexToUint8Array = (hex) => {
+    if (hex.startsWith("0x")) hex = hex.slice(2);
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+    }
+    return bytes;
+  };
+
   const convertBytes32ToIpfsHash = (bytes32) => {
-    const hex = bytes32.replace(/^0x/, "");
-    const digestBytes = Uint8Array.from(Buffer.from(hex, "hex"));
+    const digestBytes = hexToUint8Array(bytes32);
     const multihash = create$1(0x12, digestBytes);
     const cid = CID.createV0(multihash);
     return cid.toString(base58btc);
@@ -45751,135 +45759,6 @@
       await new Promise((res) => setTimeout(res, Number(delayTime)));
   };
 
-  async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
-    try {
-      const allPoolsRaw = await fetchMarginPools(chainId);
-      const securityDetailMap = new Map();
-
-      for (const pool of allPoolsRaw) {
-        if (pool.poolType !== PoolType.marginPool) continue;
-
-        try {
-          let fetchedSecurityDetails = securityDetailMap.get(pool.security);
-          if (!fetchedSecurityDetails) {
-            const details = await fetchSecurityByAddress(chainId, pool.security);
-            if (!details?.length || details[0].subscriptionsClosed?.length > 0)
-              continue;
-            securityDetailMap.set(pool.security, details);
-            fetchedSecurityDetails = details;
-          }
-
-          const securityCategory = parseBytes32String(
-            fetchedSecurityDetails[0].productCategory
-          );
-          if (!securityCategory) continue;
-
-          const securityDetails = pool.tokens.find(
-            (t) => t.address === pool.security
-          );
-          const currencyDetails = pool.tokens.find(
-            (t) => t.address === pool.currency
-          );
-          if (!securityDetails || !currencyDetails) continue;
-
-          const buyOrders = pool.marginOrders.filter(
-            (ord) => ord.tokenIn.address === pool.currency
-          );
-          const sellOrders = pool.marginOrders.filter(
-            (ord) => ord.tokenIn.address === pool.security
-          );
-
-          const buyStats = reduceOrdersUnified(buyOrders);
-          const sellStats = reduceOrdersUnified(sellOrders);
-
-          const prices = getPriceFromTraders(
-            fetchedSecurityDetails[0]?.marginTraders || [],
-            currencyDetails.decimals,
-            securityDetails.decimals
-          );
-
-          const currencyFiat = currencyDetails?.symbol
-            ?.toLowerCase()
-            ?.startsWith("vc")
-            ? currenciesToFiat[
-                currencyDetails?.symbol
-                  ?.toLowerCase()
-                  .replace("vc", "")
-                  .toUpperCase()
-              ]
-            : currenciesToFiat[
-                currencyDetails?.symbol?.toLowerCase()?.toUpperCase()
-              ];
-
-          const web3 = new Web3(chainDetails[0]?.rpcUrl);
-
-          const cficodeDecoded = parseBytes32String(
-            pool.cficode || ""
-          );
-          const cficodeSymbol = cficodeDecoded.toLowerCase().startsWith("0x")
-            ? web3.utils.toAscii(cficodeDecoded)
-            : cficodeDecoded;
-
-          const currentPrice = pool.cficode
-            ? await fetchTokenPriceFromVerified(
-                cficodeSymbol,
-                tokenGcexAlias[securityDetails?.symbol?.toUpperCase()] ||
-                  securityDetails?.symbol,
-                currencyFiat,
-                "BUY"
-              )
-            : prices.length
-            ? prices[0][1]
-            : "0.00";
-
-          const offeringDocData = await getOfferingDocData(
-            fetchedSecurityDetails[0]?.restrictions
-          );
-
-          const priceChartData = Array.from(
-            new Map(
-              prices.map(([time, value]) => [time, { time, value }])
-            ).values()
-          ).reverse();
-
-          const formattedPool = {
-            id: pool.id,
-            type: pool.poolType,
-            priceChartData: priceChartData.length ? priceChartData : null,
-            name: securityDetails.name,
-            symbol: securityDetails.symbol,
-            logo:
-              offeringDocData?.Business?.Logo ||
-              offeringDocData?.Business?.Icon ||
-              "",
-            apy: offeringDocData?.Business?.Apy
-              ? `${offeringDocData.Business.Apy}%`
-              : "0%",
-            securityCategory,
-            category: securityCategoriesAlias[securityCategory.toLowerCase()],
-            pairName: currencyDetails.name,
-            pairSymbol: currencyDetails.symbol,
-            price: currentPrice,
-            prices,
-            tvl:
-              buyStats.totalAmount + sellStats.totalAmount > 0
-                ? formatNumberWithUnits(
-                    buyStats.totalAmount + sellStats.totalAmount
-                  )
-                : "0",
-          };
-
-          yield formattedPool;
-          await maybeDelay(shouldDelay, delayTime);
-        } catch (err) {
-          console.warn(`Error processing pool ${pool.id}:`, err?.message);
-        }
-      }
-    } catch (err) {
-      console.error("getDerivatives failed:", err?.message);
-    }
-  }
-
   async function* getAMCAndFixedIncomeProducts(
     chainId,
     shouldDelay = false,
@@ -46049,6 +45928,135 @@
       }
     } catch (err) {
       console.error("getAMCAndFixedIncomeProducts failed:", err?.message);
+    }
+  }
+
+  async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
+    try {
+      const allPoolsRaw = await fetchMarginPools(chainId);
+      const securityDetailMap = new Map();
+
+      for (const pool of allPoolsRaw) {
+        if (pool.poolType !== PoolType.marginPool) continue;
+
+        try {
+          let fetchedSecurityDetails = securityDetailMap.get(pool.security);
+          if (!fetchedSecurityDetails) {
+            const details = await fetchSecurityByAddress(chainId, pool.security);
+            if (!details?.length || details[0].subscriptionsClosed?.length > 0)
+              continue;
+            securityDetailMap.set(pool.security, details);
+            fetchedSecurityDetails = details;
+          }
+
+          const securityCategory = parseBytes32String(
+            fetchedSecurityDetails[0].productCategory
+          );
+          if (!securityCategory) continue;
+
+          const securityDetails = pool.tokens.find(
+            (t) => t.address === pool.security
+          );
+          const currencyDetails = pool.tokens.find(
+            (t) => t.address === pool.currency
+          );
+          if (!securityDetails || !currencyDetails) continue;
+
+          const buyOrders = pool.marginOrders.filter(
+            (ord) => ord.tokenIn.address === pool.currency
+          );
+          const sellOrders = pool.marginOrders.filter(
+            (ord) => ord.tokenIn.address === pool.security
+          );
+
+          const buyStats = reduceOrdersUnified(buyOrders);
+          const sellStats = reduceOrdersUnified(sellOrders);
+
+          const prices = getPriceFromTraders(
+            fetchedSecurityDetails[0]?.marginTraders || [],
+            currencyDetails.decimals,
+            securityDetails.decimals
+          );
+
+          const currencyFiat = currencyDetails?.symbol
+            ?.toLowerCase()
+            ?.startsWith("vc")
+            ? currenciesToFiat[
+                currencyDetails?.symbol
+                  ?.toLowerCase()
+                  .replace("vc", "")
+                  .toUpperCase()
+              ]
+            : currenciesToFiat[
+                currencyDetails?.symbol?.toLowerCase()?.toUpperCase()
+              ];
+
+          const web3 = new Web3(chainDetails[0]?.rpcUrl);
+
+          const cficodeDecoded = parseBytes32String(
+            pool.cficode || ""
+          );
+          const cficodeSymbol = cficodeDecoded.toLowerCase().startsWith("0x")
+            ? web3.utils.toAscii(cficodeDecoded)
+            : cficodeDecoded;
+
+          const currentPrice = pool.cficode
+            ? await fetchTokenPriceFromVerified(
+                cficodeSymbol,
+                tokenGcexAlias[securityDetails?.symbol?.toUpperCase()] ||
+                  securityDetails?.symbol,
+                currencyFiat,
+                "BUY"
+              )
+            : prices.length
+            ? prices[0][1]
+            : "0.00";
+
+          const offeringDocData = await getOfferingDocData(
+            fetchedSecurityDetails[0]?.restrictions
+          );
+
+          const priceChartData = Array.from(
+            new Map(
+              prices.map(([time, value]) => [time, { time, value }])
+            ).values()
+          ).reverse();
+
+          const formattedPool = {
+            id: pool.id,
+            type: pool.poolType,
+            priceChartData: priceChartData.length ? priceChartData : null,
+            name: securityDetails.name,
+            symbol: securityDetails.symbol,
+            logo:
+              offeringDocData?.Business?.Logo ||
+              offeringDocData?.Business?.Icon ||
+              "",
+            apy: offeringDocData?.Business?.Apy
+              ? `${offeringDocData.Business.Apy}%`
+              : "0%",
+            securityCategory,
+            category: securityCategoriesAlias[securityCategory.toLowerCase()],
+            pairName: currencyDetails.name,
+            pairSymbol: currencyDetails.symbol,
+            price: currentPrice,
+            prices,
+            tvl:
+              buyStats.totalAmount + sellStats.totalAmount > 0
+                ? formatNumberWithUnits(
+                    buyStats.totalAmount + sellStats.totalAmount
+                  )
+                : "0",
+          };
+
+          yield formattedPool;
+          await maybeDelay(shouldDelay, delayTime);
+        } catch (err) {
+          console.warn(`Error processing pool ${pool.id}:`, err?.message);
+        }
+      }
+    } catch (err) {
+      console.error("getDerivatives failed:", err?.message);
     }
   }
 

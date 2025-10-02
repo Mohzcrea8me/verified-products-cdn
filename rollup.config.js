@@ -8,6 +8,7 @@ export default {
       file: "dist/index.umd.js",
       format: "umd",
       name: "VerifiedProducts",
+      exports: "named",
     },
   ],
   plugins: [

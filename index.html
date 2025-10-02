@@ -64,10 +64,13 @@
 
 <body>
 
-    <h1>Derivatives </h1>
+    <h1>Derivatives</h1>
 
     <div id="products" class="products-grid"></div>
 
+    <h1>Fixed Income And AMC</h1>
+
+    <div id="products-fx" class="products-grid"></div>
 
     <script src="https://cdn.jsdelivr.net/gh/mohzcrea8me/verified-products-cdn@main/dist/index.umd.js"></script>
     <script>
@@ -75,6 +78,7 @@
 
             window.addEventListener('DOMContentLoaded', async () => {
                 try {
+                    //derivatives
                     const container = document.getElementById('products');
 
                     const products = getDerivatives(8453);
@@ -105,6 +109,42 @@
                         card.appendChild(info);
 
                         container.appendChild(card);
+
+                    }
+
+
+
+                    //fixed income and amc
+                    const containerFx = document.getElementById('products-fx');
+
+                    const productsFx = getAMCAndFixedIncomeProducts(8453);
+                    for await (const product of productsFx) {
+                        const card = document.createElement('div');
+                        card.className = 'product-card';
+
+                        const img = document.createElement('img');
+                        img.className = 'product-icon';
+                        img.src = product.logo;
+                        img.alt = product.name;
+
+                        const name = document.createElement('div');
+                        name.className = 'product-name';
+                        name.textContent = `${product.name} (${product.symbol}/${product.pairSymbol})`;
+
+                        const price = document.createElement('div');
+                        price.className = 'product-price';
+                        price.textContent = `${product.price} ${product.pairSymbol}`;
+
+                        const info = document.createElement('div');
+                        info.className = 'product-info';
+                        info.textContent = product.category;
+
+                        card.appendChild(img);
+                        card.appendChild(name);
+                        card.appendChild(price);
+                        card.appendChild(info);
+
+                        containerFx.appendChild(card);
 
                     }
 

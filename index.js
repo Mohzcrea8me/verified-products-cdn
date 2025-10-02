@@ -428,9 +428,17 @@ const readIpfsDocumentFromHash = async (ipfsHash) => {
   }
 };
 
+const hexToUint8Array = (hex) => {
+  if (hex.startsWith("0x")) hex = hex.slice(2);
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+};
+
 const convertBytes32ToIpfsHash = (bytes32) => {
-  const hex = bytes32.replace(/^0x/, "");
-  const digestBytes = Uint8Array.from(Buffer.from(hex, "hex"));
+  const digestBytes = hexToUint8Array(bytes32);
   const multihash = create(0x12, digestBytes);
   const cid = CID.createV0(multihash);
   return cid.toString(base58btc);
@@ -643,135 +651,6 @@ const maybeDelay = async (shouldDelay, delayTime) => {
     await new Promise((res) => setTimeout(res, Number(delayTime)));
 };
 
-async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
-  try {
-    const allPoolsRaw = await fetchMarginPools(chainId);
-    const securityDetailMap = new Map();
-
-    for (const pool of allPoolsRaw) {
-      if (pool.poolType !== PoolType.marginPool) continue;
-
-      try {
-        let fetchedSecurityDetails = securityDetailMap.get(pool.security);
-        if (!fetchedSecurityDetails) {
-          const details = await fetchSecurityByAddress(chainId, pool.security);
-          if (!details?.length || details[0].subscriptionsClosed?.length > 0)
-            continue;
-          securityDetailMap.set(pool.security, details);
-          fetchedSecurityDetails = details;
-        }
-
-        const securityCategory = ethers.utils.parseBytes32String(
-          fetchedSecurityDetails[0].productCategory
-        );
-        if (!securityCategory) continue;
-
-        const securityDetails = pool.tokens.find(
-          (t) => t.address === pool.security
-        );
-        const currencyDetails = pool.tokens.find(
-          (t) => t.address === pool.currency
-        );
-        if (!securityDetails || !currencyDetails) continue;
-
-        const buyOrders = pool.marginOrders.filter(
-          (ord) => ord.tokenIn.address === pool.currency
-        );
-        const sellOrders = pool.marginOrders.filter(
-          (ord) => ord.tokenIn.address === pool.security
-        );
-
-        const buyStats = reduceOrdersUnified(buyOrders);
-        const sellStats = reduceOrdersUnified(sellOrders);
-
-        const prices = getPriceFromTraders(
-          fetchedSecurityDetails[0]?.marginTraders || [],
-          currencyDetails.decimals,
-          securityDetails.decimals
-        );
-
-        const currencyFiat = currencyDetails?.symbol
-          ?.toLowerCase()
-          ?.startsWith("vc")
-          ? currenciesToFiat[
-              currencyDetails?.symbol
-                ?.toLowerCase()
-                .replace("vc", "")
-                .toUpperCase()
-            ]
-          : currenciesToFiat[
-              currencyDetails?.symbol?.toLowerCase()?.toUpperCase()
-            ];
-
-        const web3 = new Web3(chainDetails[0]?.rpcUrl);
-
-        const cficodeDecoded = ethers.utils.parseBytes32String(
-          pool.cficode || ""
-        );
-        const cficodeSymbol = cficodeDecoded.toLowerCase().startsWith("0x")
-          ? web3.utils.toAscii(cficodeDecoded)
-          : cficodeDecoded;
-
-        const currentPrice = pool.cficode
-          ? await fetchTokenPriceFromVerified(
-              cficodeSymbol,
-              tokenGcexAlias[securityDetails?.symbol?.toUpperCase()] ||
-                securityDetails?.symbol,
-              currencyFiat,
-              "BUY"
-            )
-          : prices.length
-          ? prices[0][1]
-          : "0.00";
-
-        const offeringDocData = await getOfferingDocData(
-          fetchedSecurityDetails[0]?.restrictions
-        );
-
-        const priceChartData = Array.from(
-          new Map(
-            prices.map(([time, value]) => [time, { time, value }])
-          ).values()
-        ).reverse();
-
-        const formattedPool = {
-          id: pool.id,
-          type: pool.poolType,
-          priceChartData: priceChartData.length ? priceChartData : null,
-          name: securityDetails.name,
-          symbol: securityDetails.symbol,
-          logo:
-            offeringDocData?.Business?.Logo ||
-            offeringDocData?.Business?.Icon ||
-            "",
-          apy: offeringDocData?.Business?.Apy
-            ? `${offeringDocData.Business.Apy}%`
-            : "0%",
-          securityCategory,
-          category: securityCategoriesAlias[securityCategory.toLowerCase()],
-          pairName: currencyDetails.name,
-          pairSymbol: currencyDetails.symbol,
-          price: currentPrice,
-          prices,
-          tvl:
-            buyStats.totalAmount + sellStats.totalAmount > 0
-              ? formatNumberWithUnits(
-                  buyStats.totalAmount + sellStats.totalAmount
-                )
-              : "0",
-        };
-
-        yield formattedPool;
-        await maybeDelay(shouldDelay, delayTime);
-      } catch (err) {
-        console.warn(`Error processing pool ${pool.id}:`, err?.message);
-      }
-    }
-  } catch (err) {
-    console.error("getDerivatives failed:", err?.message);
-  }
-}
-
 async function* getAMCAndFixedIncomeProducts(
   chainId,
   shouldDelay = false,
@@ -941,6 +820,135 @@ async function* getAMCAndFixedIncomeProducts(
     }
   } catch (err) {
     console.error("getAMCAndFixedIncomeProducts failed:", err?.message);
+  }
+}
+
+async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
+  try {
+    const allPoolsRaw = await fetchMarginPools(chainId);
+    const securityDetailMap = new Map();
+
+    for (const pool of allPoolsRaw) {
+      if (pool.poolType !== PoolType.marginPool) continue;
+
+      try {
+        let fetchedSecurityDetails = securityDetailMap.get(pool.security);
+        if (!fetchedSecurityDetails) {
+          const details = await fetchSecurityByAddress(chainId, pool.security);
+          if (!details?.length || details[0].subscriptionsClosed?.length > 0)
+            continue;
+          securityDetailMap.set(pool.security, details);
+          fetchedSecurityDetails = details;
+        }
+
+        const securityCategory = ethers.utils.parseBytes32String(
+          fetchedSecurityDetails[0].productCategory
+        );
+        if (!securityCategory) continue;
+
+        const securityDetails = pool.tokens.find(
+          (t) => t.address === pool.security
+        );
+        const currencyDetails = pool.tokens.find(
+          (t) => t.address === pool.currency
+        );
+        if (!securityDetails || !currencyDetails) continue;
+
+        const buyOrders = pool.marginOrders.filter(
+          (ord) => ord.tokenIn.address === pool.currency
+        );
+        const sellOrders = pool.marginOrders.filter(
+          (ord) => ord.tokenIn.address === pool.security
+        );
+
+        const buyStats = reduceOrdersUnified(buyOrders);
+        const sellStats = reduceOrdersUnified(sellOrders);
+
+        const prices = getPriceFromTraders(
+          fetchedSecurityDetails[0]?.marginTraders || [],
+          currencyDetails.decimals,
+          securityDetails.decimals
+        );
+
+        const currencyFiat = currencyDetails?.symbol
+          ?.toLowerCase()
+          ?.startsWith("vc")
+          ? currenciesToFiat[
+              currencyDetails?.symbol
+                ?.toLowerCase()
+                .replace("vc", "")
+                .toUpperCase()
+            ]
+          : currenciesToFiat[
+              currencyDetails?.symbol?.toLowerCase()?.toUpperCase()
+            ];
+
+        const web3 = new Web3(chainDetails[0]?.rpcUrl);
+
+        const cficodeDecoded = ethers.utils.parseBytes32String(
+          pool.cficode || ""
+        );
+        const cficodeSymbol = cficodeDecoded.toLowerCase().startsWith("0x")
+          ? web3.utils.toAscii(cficodeDecoded)
+          : cficodeDecoded;
+
+        const currentPrice = pool.cficode
+          ? await fetchTokenPriceFromVerified(
+              cficodeSymbol,
+              tokenGcexAlias[securityDetails?.symbol?.toUpperCase()] ||
+                securityDetails?.symbol,
+              currencyFiat,
+              "BUY"
+            )
+          : prices.length
+          ? prices[0][1]
+          : "0.00";
+
+        const offeringDocData = await getOfferingDocData(
+          fetchedSecurityDetails[0]?.restrictions
+        );
+
+        const priceChartData = Array.from(
+          new Map(
+            prices.map(([time, value]) => [time, { time, value }])
+          ).values()
+        ).reverse();
+
+        const formattedPool = {
+          id: pool.id,
+          type: pool.poolType,
+          priceChartData: priceChartData.length ? priceChartData : null,
+          name: securityDetails.name,
+          symbol: securityDetails.symbol,
+          logo:
+            offeringDocData?.Business?.Logo ||
+            offeringDocData?.Business?.Icon ||
+            "",
+          apy: offeringDocData?.Business?.Apy
+            ? `${offeringDocData.Business.Apy}%`
+            : "0%",
+          securityCategory,
+          category: securityCategoriesAlias[securityCategory.toLowerCase()],
+          pairName: currencyDetails.name,
+          pairSymbol: currencyDetails.symbol,
+          price: currentPrice,
+          prices,
+          tvl:
+            buyStats.totalAmount + sellStats.totalAmount > 0
+              ? formatNumberWithUnits(
+                  buyStats.totalAmount + sellStats.totalAmount
+                )
+              : "0",
+        };
+
+        yield formattedPool;
+        await maybeDelay(shouldDelay, delayTime);
+      } catch (err) {
+        console.warn(`Error processing pool ${pool.id}:`, err?.message);
+      }
+    }
+  } catch (err) {
+    console.error("getDerivatives failed:", err?.message);
   }
 }
 
