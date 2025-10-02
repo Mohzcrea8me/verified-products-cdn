@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Verified Products</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .product-card {
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #f9f9f9;
+            box-shadow: 0 2px 5px rgb(0 0 0 / 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .product-icon {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 15px;
+            object-fit: contain;
+        }
+
+        .product-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .product-price {
+            color: #007BFF;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .product-info {
+            font-size: 0.9rem;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Derivatives</h1>
+
+    <div id="products" class="products-grid"></div>
+
+
+    <script type="module"
+        src="https://cdn.jsdelivr.net/gh/mohzcrea8me/verified-products-cdn@main/dist/index.js"></script>
+
+    <script>
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const products = await getDerivatives(8453);
+                const container = document.getElementById('products');
+
+                products.forEach(product => {
+                    const card = document.createElement('div');
+                    card.className = 'product-card';
+
+                    const img = document.createElement('img');
+                    img.className = 'product-icon';
+                    img.src = product.logo;
+                    img.alt = product.name;
+
+                    const name = document.createElement('div');
+                    name.className = 'product-name';
+                    name.textContent = `${product.name} (${product.symbol}/${product.pairSymbol})`;
+
+                    const price = document.createElement('div');
+                    price.className = 'product-price';
+                    price.textContent = `${product.price} ${product.pairSymbol}`;
+
+                    const info = document.createElement('div');
+                    info.className = 'product-info';
+                    info.textContent = product.category;
+
+                    card.appendChild(img);
+                    card.appendChild(name);
+                    card.appendChild(price);
+                    card.appendChild(info);
+
+                    container.appendChild(card);
+                });
+
+
+            } catch (err) {
+                console.error("load products error: ", err);
+            }
+        });
+    </script>
+</body>
+
+</html>
