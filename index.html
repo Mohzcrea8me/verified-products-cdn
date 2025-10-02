@@ -70,51 +70,54 @@
 
 
 
-    <script type="module"
-        src="https://cdn.jsdelivr.net/gh/mohzcrea8me/verified-products-cdn@main/dist/index.js"></script>
+    <script type="module">
+        import { getDerivatives } from "https://cdn.jsdelivr.net/gh/mohzcrea8me/verified-products-cdn@main/dist/index.js";
 
-    <script>
+        (async () => {
+            window.addEventListener('DOMContentLoaded', async () => {
+                try {
+                    console.log(getDerivatives, window.getDerivatives)
+                    const container = document.getElementById('products');
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                console.log(getDerivatives, window.getDerivatives)
-                const container = document.getElementById('products');
+                    for await (const product of getDerivatives(8453)) {
 
-                for await (const product of getDerivatives(8453)) {
+                        const card = document.createElement('div');
+                        card.className = 'product-card';
 
-                    const card = document.createElement('div');
-                    card.className = 'product-card';
+                        const img = document.createElement('img');
+                        img.className = 'product-icon';
+                        img.src = product.logo;
+                        img.alt = product.name;
 
-                    const img = document.createElement('img');
-                    img.className = 'product-icon';
-                    img.src = product.logo;
-                    img.alt = product.name;
+                        const name = document.createElement('div');
+                        name.className = 'product-name';
+                        name.textContent = `${product.name} (${product.symbol}/${product.pairSymbol})`;
 
-                    const name = document.createElement('div');
-                    name.className = 'product-name';
-                    name.textContent = `${product.name} (${product.symbol}/${product.pairSymbol})`;
+                        const price = document.createElement('div');
+                        price.className = 'product-price';
+                        price.textContent = `${product.price} ${product.pairSymbol}`;
 
-                    const price = document.createElement('div');
-                    price.className = 'product-price';
-                    price.textContent = `${product.price} ${product.pairSymbol}`;
+                        const info = document.createElement('div');
+                        info.className = 'product-info';
+                        info.textContent = product.category;
 
-                    const info = document.createElement('div');
-                    info.className = 'product-info';
-                    info.textContent = product.category;
+                        card.appendChild(img);
+                        card.appendChild(name);
+                        card.appendChild(price);
+                        card.appendChild(info);
 
-                    card.appendChild(img);
-                    card.appendChild(name);
-                    card.appendChild(price);
-                    card.appendChild(info);
+                        container.appendChild(card);
+                    }
 
-                    container.appendChild(card);
+                } catch (err) {
+                    console.error("load products error: ", err);
                 }
-
-            } catch (err) {
-                console.error("load products error: ", err);
-            }
-        });
+            });
+        })();
     </script>
+
+
+
 </body>
 
 </html>
