@@ -319,7 +319,7 @@ const chainDetails = {
     name: "Base Mainnet",
     vaultSubgraphUrl: `https://gateway.thegraph.com/api/b8a85dbf6f1f1111a5d83b479ee31262/subgraphs/id/HESgHTG2RE8F74MymKrdXKJw2u4s8YBJgbCjHuzhpXeC`,
     walletSubgraphUrl: `https://gateway.thegraph.com/api/b8a85dbf6f1f1111a5d83b479ee31262/subgraphs/id/2aGD2WDR6ncrTvGU4wEaME2Ywke1ookuNucMNJmcnrz5`,
-    rpcUrl: `https://base-mainnet.g.alchemy.com/v2/82hkNrfu6ZZ8Wms2vr1U331ml3FtS7AZ`,
+    rpcUrl: `https://base-mainnet.public.blastapi.io`,
   },
 
   1: {
@@ -652,7 +652,6 @@ async function* getDerivatives(chainId, shouldDelay = false, delayTime = 1000) {
       if (pool.poolType !== PoolType.marginPool) continue;
 
       try {
-        // Lazy-load security details
         let fetchedSecurityDetails = securityDetailMap.get(pool.security);
         if (!fetchedSecurityDetails) {
           const details = await fetchSecurityByAddress(chainId, pool.security);
@@ -784,17 +783,21 @@ async function* getAMCAndFixedIncomeProducts(
       JSON.stringify([PoolType.primaryPool, PoolType.secondaryPool])
     );
 
+    const securityDetailMap = new Map();
+
     for (const pool of allPoolsRaw) {
       try {
-        const fetchedSecurityDetails = await fetchSecurityByAddress(
-          chainId,
-          pool.security
-        );
-        if (!fetchedSecurityDetails?.length) continue;
+        let fetchedSecurityDetails = securityDetailMap.get(pool.security);
 
-        const subscriptionsClosed =
-          fetchedSecurityDetails[0]?.subscriptionsClosed;
-        if (subscriptionsClosed?.length > 0) continue;
+        if (!fetchedSecurityDetails) {
+          const details = await fetchSecurityByAddress(chainId, pool.security);
+          if (!details?.length || details[0].subscriptionsClosed?.length > 0) {
+            // Skip if no details or subscriptions are closed
+            continue;
+          }
+          securityDetailMap.set(pool.security, details);
+          fetchedSecurityDetails = details;
+        }
 
         const securityCategory = ethers.utils.parseBytes32String(
           fetchedSecurityDetails[0].productCategory
@@ -807,6 +810,8 @@ async function* getAMCAndFixedIncomeProducts(
         const currencyDetails = pool.tokens.find(
           (t) => t.address === pool.currency
         );
+
+        if (!securityDetails || !currencyDetails) continue;
 
         let totalBought = 0;
         let totalSold = 0;
@@ -926,9 +931,7 @@ async function* getAMCAndFixedIncomeProducts(
               : "0",
         };
 
-        // Yield the formatted pool as soon as it is ready
         yield formattedPool;
-
         await maybeDelay(shouldDelay, delayTime);
       } catch (poolError) {
         console.warn(
@@ -943,6 +946,7 @@ async function* getAMCAndFixedIncomeProducts(
 
 if (typeof window !== "undefined") {
   window.getDerivatives = getDerivatives;
+  window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
 }
 
-export { getDerivatives };
+export { getDerivatives, getAMCAndFixedIncomeProducts };

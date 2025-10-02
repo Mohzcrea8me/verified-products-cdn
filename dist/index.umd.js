@@ -8627,6 +8627,9 @@
       }
       return formatFixed(value, (unitName != null) ? unitName : 18);
   }
+  function formatEther(wei) {
+      return formatUnits(wei, 18);
+  }
 
   function equals$1(aa, bb) {
       if (aa === bb) {
@@ -45428,7 +45431,7 @@
       name: "Base Mainnet",
       vaultSubgraphUrl: `https://gateway.thegraph.com/api/b8a85dbf6f1f1111a5d83b479ee31262/subgraphs/id/HESgHTG2RE8F74MymKrdXKJw2u4s8YBJgbCjHuzhpXeC`,
       walletSubgraphUrl: `https://gateway.thegraph.com/api/b8a85dbf6f1f1111a5d83b479ee31262/subgraphs/id/2aGD2WDR6ncrTvGU4wEaME2Ywke1ookuNucMNJmcnrz5`,
-      rpcUrl: `https://base-mainnet.g.alchemy.com/v2/82hkNrfu6ZZ8Wms2vr1U331ml3FtS7AZ`,
+      rpcUrl: `https://base-mainnet.public.blastapi.io`,
     },
 
     1: {
@@ -45679,6 +45682,32 @@
     );
   };
 
+  /**
+   *
+   * @param {number} chainId
+   * @param {string[]} acceptedPoolTypesArray string formatted array of poolType e.g ["PrimaryIssue", "SecondaryIssue"]
+   * @returns {promise<any[]>} all pools
+   */
+  const fetchCustomPools = async (chainId, acceptedPoolTypesArray) => {
+    const query = `query {
+    pools: pools( 
+      orderBy: createTime
+      orderDirection: desc
+      where: {
+        poolType_in: ${acceptedPoolTypesArray}
+      }
+    ) {
+       ${generalPoolsField} 
+    }
+  }`;
+    return await sendSubgraphQuery(
+      getVaultSubgraphUrl(chainId),
+      query,
+      "pools",
+      []
+    );
+  };
+
   const reduceOrdersUnified = (orders, key = "creator") =>
     orders.reduce(
       (acc, curr) => {
@@ -45731,7 +45760,6 @@
         if (pool.poolType !== PoolType.marginPool) continue;
 
         try {
-          // Lazy-load security details
           let fetchedSecurityDetails = securityDetailMap.get(pool.security);
           if (!fetchedSecurityDetails) {
             const details = await fetchSecurityByAddress(chainId, pool.security);
@@ -45852,10 +45880,184 @@
     }
   }
 
-  if (typeof window !== "undefined") {
-    window.getDerivatives = getDerivatives;
+  async function* getAMCAndFixedIncomeProducts(
+    chainId,
+    shouldDelay = false,
+    delayTime = 1000
+  ) {
+    try {
+      const allPoolsRaw = await fetchCustomPools(
+        chainId,
+        JSON.stringify([PoolType.primaryPool, PoolType.secondaryPool])
+      );
+
+      const securityDetailMap = new Map();
+
+      for (const pool of allPoolsRaw) {
+        try {
+          let fetchedSecurityDetails = securityDetailMap.get(pool.security);
+
+          if (!fetchedSecurityDetails) {
+            const details = await fetchSecurityByAddress(chainId, pool.security);
+            if (!details?.length || details[0].subscriptionsClosed?.length > 0) {
+              // Skip if no details or subscriptions are closed
+              continue;
+            }
+            securityDetailMap.set(pool.security, details);
+            fetchedSecurityDetails = details;
+          }
+
+          const securityCategory = parseBytes32String(
+            fetchedSecurityDetails[0].productCategory
+          );
+          if (!securityCategory) continue;
+
+          const securityDetails = pool.tokens.find(
+            (t) => t.address === pool.security
+          );
+          const currencyDetails = pool.tokens.find(
+            (t) => t.address === pool.currency
+          );
+
+          if (!securityDetails || !currencyDetails) continue;
+
+          let totalBought = 0;
+          let totalSold = 0;
+          let prices = [];
+          let priceChartData = [];
+          let currentPrice = "0.00";
+          let offeringDocData = null;
+
+          if (pool.poolType === PoolType.primaryPool) {
+            const buyOrders = pool.primarySubscriptions.filter(
+              (ord) => ord.assetIn.address === pool.currency
+            );
+            const sellOrders = pool.primarySubscriptions.filter(
+              (ord) => ord.assetIn.address === pool.security
+            );
+
+            const buyStats = reduceOrdersUnified(buyOrders, "investor.id");
+            const sellStats = reduceOrdersUnified(sellOrders, "investor.id");
+
+            totalBought = buyStats.totalAmount;
+            totalSold = sellStats.totalAmount;
+
+            prices = (fetchedSecurityDetails[0]?.primarySubscribers || [])
+              .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+              .map((sub) => {
+                const [mm, dd, yyyy] = convertFromBlockTimestamp(sub.timestamp)
+                  .split("/")
+                  .map(Number);
+                const cash = Number(
+                  formatUnits(
+                    sub.cashSwapped,
+                    currencyDetails.decimals
+                  )
+                );
+                const security = Number(
+                  formatUnits(
+                    sub.securitySwapped,
+                    securityDetails.decimals
+                  )
+                );
+                const price = cash / security;
+
+                if (securityCategory.toLowerCase() === "amc") {
+                  priceChartData.push({
+                    time: sub.timestamp,
+                    value: Number(price.toFixed(6)),
+                  });
+                }
+
+                return [Date.UTC(yyyy, mm - 1, dd), Number(price.toFixed(6))];
+              });
+
+            currentPrice = prices.length ? prices[0][1] : "0.00";
+            offeringDocData = await readIpfsDocumentFromHash(pool.offeringDocs);
+          } else if (pool.poolType === PoolType.secondaryPool) {
+            const buyOrders = pool.orders.filter(
+              (ord) => ord.tokenIn.address === pool.currency
+            );
+            const sellOrders = pool.orders.filter(
+              (ord) => ord.tokenIn.address === pool.security
+            );
+
+            const buyStats = reduceOrdersUnified(buyOrders, "creator");
+            const sellStats = reduceOrdersUnified(sellOrders, "creator");
+
+            totalBought = buyStats.totalAmount;
+            totalSold = sellStats.totalAmount;
+
+            prices = (fetchedSecurityDetails[0]?.secondaryInvestors || [])
+              .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+              .map((inv) => {
+                const [mm, dd, yyyy] = convertFromBlockTimestamp(inv.timestamp)
+                  .split("/")
+                  .map(Number);
+                return [
+                  Date.UTC(yyyy, mm - 1, dd),
+                  Number(formatEther(inv.price)).toFixed(6),
+                ];
+              });
+
+            currentPrice = prices.length ? prices[0][1] : "0.00";
+
+            offeringDocData = await getOfferingDocData(
+              fetchedSecurityDetails[0]?.restrictions
+            );
+          }
+
+          const chartData =
+            priceChartData.length > 0
+              ? Array.from(
+                  new Map(priceChartData.map((p) => [p.time, p])).values()
+                ).reverse()
+              : null;
+
+          const formattedPool = {
+            id: pool.id,
+            type: pool.poolType,
+            priceChartData: chartData,
+            name: securityDetails.name,
+            symbol: securityDetails.symbol,
+            logo:
+              offeringDocData?.Business?.Logo ||
+              offeringDocData?.Business?.Icon ||
+              "",
+            apy: offeringDocData?.Business?.Apy
+              ? `${offeringDocData.Business.Apy}%`
+              : "0%",
+            securityCategory,
+            category: securityCategoriesAlias[securityCategory.toLowerCase()],
+            pairName: currencyDetails.name,
+            pairSymbol: currencyDetails.symbol,
+            price: currentPrice,
+            prices,
+            tvl:
+              totalBought + totalSold > 0
+                ? formatNumberWithUnits(totalBought + totalSold)
+                : "0",
+          };
+
+          yield formattedPool;
+          await maybeDelay(shouldDelay, delayTime);
+        } catch (poolError) {
+          console.warn(
+            `Failed to process pool ${pool.id}: ${poolError?.message}`
+          );
+        }
+      }
+    } catch (err) {
+      console.error("getAMCAndFixedIncomeProducts failed:", err?.message);
+    }
   }
 
+  if (typeof window !== "undefined") {
+    window.getDerivatives = getDerivatives;
+    window.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
+  }
+
+  exports.getAMCAndFixedIncomeProducts = getAMCAndFixedIncomeProducts;
   exports.getDerivatives = getDerivatives;
 
 }));
